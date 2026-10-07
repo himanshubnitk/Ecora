@@ -3,29 +3,41 @@ simulation:
   area_size: [1000, 1000]  # meters
   
 vehicles:
-  mission_vehicles: 30
-  collaborative_vehicles: 20
-  speed_range: [30, 120]  # km/h
-  communication_range: 250  # meters
+  mission_vehicles: 45
+  collaborative_vehicles: 18
+  communication_range: 100  # meters (from TABLE I)
+  average_speed_kmh: 60 # Default
   
 infrastructure:
-  rsus: 5
+  rsus: 10 # 10 APs to prevent "dead zones"
   edge_servers: 5
-  bandwidth: 20  # MHz
-  subchannel_bandwidth: 1  # MHz
+  communication_range_ap: 150 # meters (from TABLE I)
+  bandwidth: 20  # Total channel bandwidth in MHz (from TABLE I)
+  subchannel_bandwidth: 1  # Bandwidth 'B' per channel in MHz
   
 tasks:
-  data_size_range: [0.3, 0.45]  # MB
-  computation_demand_range: [0.3, 0.45]  # GHz
+  # --- CRITICAL: Units that match the paper's ~2ms graphs ---
+  data_size_range_kbytes: [0.3, 0.45]
+  computation_demand_range_mcycles: [0.3, 0.45] 
+  # ---
+  task_generation_prob: 0.7 # Default
   
 services:
-  total_services: 10
+  total_services: 4 # (from TABLE I, F=4)
   zipf_parameter: 0.8
+  
+# Parameters for Channel Model (from TABLE I)
+channel:
+  ap_tx_power_dbm: 16
+  vehicle_tx_power_dbm: 3
+  noise_power_dbm: -174
+  path_loss_exponent: 3.76
+  shadow_fading_std_dev_db: 5
   
 algorithms:
   cuckoo:
     nest_size: 25
-    max_iterations: 100
+    max_iterations: 25 # Set to 25 to match paper's graphs
     discovery_probability: 0.25
     step_size_factor: 1.0
     levy_beta: 1.5

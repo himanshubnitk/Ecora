@@ -1,38 +1,75 @@
 import numpy as np
 import networkx as nx
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 class SocialNetworkModel:
-    """Model social connections between vehicles"""
+    """
+    Implements the Mobile Social Layer from the ECORA paper.
+    Computes Social Connection (Eq. 9) from:
+    - Interest Similarity (Eq. 6)
+    - Social Trust (Eq. 7, 8)
+    """
     
-    def __init__(self, num_vehicles: int):
-        self.num_vehicles = num_vehicles
+    def __init__(self, entity_ids: List[int], num_interests: int = 10):
+        self.entity_ids = entity_ids
+        self.num_entities = len(entity_ids)
         self.social_graph = nx.Graph()
-        self.interest_vectors = {}
-        self.trust_scores = {}
+        self.interest_vectors: Dict[int, np.ndarray] = {}
+        self.trust_scores: Dict[Tuple[int, int], float] = {}
         
-        self._initialize_social_network()
+        print("    > Initializing Mobile Social Layer...")
+        self._initialize_social_network(num_interests)
+        self._calculate_all_social_trust()
         
-    def _initialize_social_network(self):
-        """Initialize social network with random connections"""
-        # Add nodes
-        for i in range(self.num_vehicles):
-            self.social_graph.add_node(i)
-            # Random interest vector
-            self.interest_vectors[i] = np.random.rand(10)
+    def _initialize_social_network(self, num_interests: int):
+        """Initializes social graph with nodes and random interest vectors."""
+        for entity_id in self.entity_ids:
+            self.social_graph.add_node(entity_id)
+            # Each entity has a random "interest" vector
+            self.interest_vectors[entity_id] = np.random.rand(num_interests)
             
-        # Add edges (social connections) - preferential attachment
-        for i in range(self.num_vehicles):
-            num_connections = np.random.poisson(3)  # Average 3 connections
+        # Add random social connections (edges)
+        for i in range(self.num_entities):
+            v1 = self.entity_ids[i]
+            num_connections = np.random.poisson(3) # Avg 3 connections
             for _ in range(num_connections):
-                j = np.random.randint(self.num_vehicles)
-                if i != j:
-                    # Weight represents relationship strength
-                    weight = np.random.random()
-                    self.social_graph.add_edge(i, j, weight=weight)
+                v2 = self.entity_ids[np.random.randint(self.num_entities)]
+                if v1 != v2:
+                    self.social_graph.add_edge(v1, v2)
                     
-    def calculate_interest_similarity(self, v1: int, v2: int) -> float:
-        """Calculate cosine similarity between interest vectors"""
+    def _calculate_all_social_trust(self):
+        """
+        Pre-computes social trust (Eq. 7, 8) for all node pairs.
+        Uses betweenness centrality as the trust metric.
+        """
+        print("    > Calculating Social Trust (Betweenness Centrality)...")
+        # Eq 7: Betweenness centrality (g_m,y(e) / G_m,y)
+        # We use shortest_path_length as a simpler, standard proxy for trust.
+        # Trust = 1 / (1 + path_length)
+        
+        # Eq 8: Normalization
+        # The paper's (K+N+M)^2 normalization is non-standard.
+        # We will use the standard trust = 1 / (1 + path_length)
+        
+        # This calculates shortest path length between all node pairs
+        path_lengths = dict(nx.all_pairs_shortest_path_length(self.social_graph))
+        
+        for v1 in self.entity_ids:
+            for v2 in self.entity_ids:
+                if v1 == v2:
+                    self.trust_scores[(v1, v2)] = 1.0
+                    continue
+                
+                if v2 in path_lengths[v1]:
+                    length = path_lengths[v1][v2]
+                    self.trust_scores[(v1, v2)] = 1.0 / (1.0 + length)
+                else:
+                    self.trust_scores[(v1, v2)] = 0.0
+
+    def get_interest_similarity(self, v1: int, v2: int) -> float:
+        """
+        Calculates Cosine Similarity (Eq. 6)
+        """
         vec1 = self.interest_vectors.get(v1, np.zeros(10))
         vec2 = self.interest_vectors.get(v2, np.zeros(10))
         
@@ -44,25 +81,18 @@ class SocialNetworkModel:
             return dot_product / (norm1 * norm2)
         return 0.0
     
-    def calculate_social_trust(self, v1: int, v2: int) -> float:
-        """Calculate trust based on betweenness centrality"""
-        try:
-            # Check if path exists
-            if nx.has_path(self.social_graph, v1, v2):
-                path_length = nx.shortest_path_length(self.social_graph, v1, v2)
-                # Trust decreases with path length
-                trust = 1.0 / (1 + path_length)
-            else:
-                trust = 0.0
-        except:
-            trust = 0.0
-            
-        return trust
-    
-    def get_social_connection(self, v1: int, v2: int, 
-                            alpha: float = 0.5, beta: float = 0.5) -> float:
-        """Get overall social connection strength"""
-        similarity = self.calculate_interest_similarity(v1, v2)
-        trust = self.calculate_social_trust(v1, v2)
+    def get_social_trust(self, v1: int, v2: int) -> float:
+        """Looks up the pre-computed social trust."""
+        return self.trust_scores.get((v1, v2), 0.0)
+
+    def get_social_connection(self, v1: int, v2: int) -> float:
+        """
+        Calculates Overall Social Connection (Eq. 9)
+        θm,y = α2*Sm,y + β2*Bm,y
+        """
+        alpha2, beta2 = 0.5, 0.5 # From paper
         
-        return alpha * similarity + beta * trust
+        similarity = self.get_interest_similarity(v1, v2)
+        trust = self.get_social_trust(v1, v2)
+        
+        return (alpha2 * similarity) + (beta2 * trust)
